@@ -1,0 +1,73 @@
+#FederalFunds Rate Prediction
+
+#packages
+install.packages("ROCR")
+library(ROCR)
+install.packages("caret")
+library(caret)
+install.packages("rpart.plot")
+library(rpart.plot)
+
+fedFunds<-read.csv("federalFundsRate.csv",stringsAsFactors=FALSE)
+fedFunds$RaisedFedFunds=as.factor(fedFunds$RaisedFedFunds)
+
+
+table(fedFunds$RaisedFedFunds)
+
+#Setting a baseline for prediction.  Based on the table above, we see that of the 585 instances of interest rate change, 294 were increases (the other instances are the same or lowered rates)
+#So our baseline model is to always predict that the Federal Reserve will raise interest rates.  If we do this, we will be correct 50.2% of the time.
+294/nrow(fedFunds)
+
+table(fedFunds$Chairman)
+
+#Preparing the data
+
+##Data split 70% train, 30% test
+
+str(fedFunds)
+
+set.seed(201)
+library(caTools)
+spl = sample.split(fedFunds$RaisedFedFunds, 0.7)
+train= subset(fedFunds,spl==TRUE)
+test= subset(fedFunds,spl==FALSE)
+
+
+#logistic regression model
+logmodel1<-glm(RaisedFedFunds~PreviousRate+Streak+Unemployment+HomeownershipRate+DemocraticPres+MonthsUntilElection, data=train,family="binomial")
+summary(logmodel1)
+
+predicttrain = predict(logmodel1, newdata=train)
+
+predicttest= predict(logmodel1, newdata=test,type="response")
+
+table(test$RaisedFedFunds, predicttest> 0.5)
+
+#ROCR
+ROCRpred <- prediction(predicttest, test$RaisedFedFunds)
+ROCRperf <- performance(ROCRpred,"tpr","fpr")
+
+plot(ROCRperf)
+
+# Add colors
+plot(ROCRperf, colorize=TRUE)
+as.numeric(performance(ROCRpred, "auc")@y.values)
+
+
+#CART model
+set.seed(201)
+cp.grid = expand.grid( .cp = (0:50)*0.001) 
+numFolds = trainControl(method = "cv", number=10)
+train(RaisedFedFunds ~ PreviousRate+Streak+Unemployment+HomeownershipRate+DemocraticPres+MonthsUntilElection, data = train, method = "rpart", trControl = numFolds, tuneGrid = cp.grid )
+RaisedFedFundsTree = rpart(RaisedFedFunds ~ PreviousRate+Streak+Unemployment+HomeownershipRate+DemocraticPres+MonthsUntilElection, data = train, method="class", cp = 0.016)
+
+
+
+prp(RaisedFedFundsTree)
+
+#make a confusion matrix with your test set
+
+predicttest= predict(RaisedFedFundsTree,newdata=test,type="class")
+
+(64+48)/nrow(test)
+
